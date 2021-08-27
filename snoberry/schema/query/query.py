@@ -1,6 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, cast
 
 import strawberry
+from pydantic import BaseModel
 
 from ...database import database
 from ...models import MODELS, ChildModel, ParentModel
@@ -105,8 +106,11 @@ class Query:
         # No need for pydantic validation, data in DB is well-formed
         query = table.select().where(table.c.id == type_id)
         row = await database.database.fetch_one(query=query)
-        modeled = MODELS[typename].construct(**row.data)
-        return _NODES[typename].from_pydantic(modeled, extra={"id": row.id})
+        model = cast(BaseModel, MODELS[typename])
+        modeled = model.construct(**row.data)
+        return _NODES[typename].from_pydantic(  # type: ignore
+            modeled, extra={"id": row.id}
+        )
 
     @strawberry.field
     async def get_parent(self, id: str) -> Parent:

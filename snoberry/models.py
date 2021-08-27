@@ -43,9 +43,9 @@ class ParentModel(BaseModel):
     child_ids: Annotated[List[str], Field(min_items=1)]
 
     # Validators
-    _validate_child_ids = validator("child_ids", allow_reuse=True, each_item=True)(
-        validate_id_sync
-    )
+    _validate_child_ids = validator(  # type: ignore
+        "child_ids", allow_reuse=True, each_item=True
+    )(validate_id_sync)
 
 
 MODELS = {"children": ChildModel, "parents": ParentModel}
