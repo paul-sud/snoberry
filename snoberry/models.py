@@ -1,41 +1,51 @@
-from typing import List, Optional
+import asyncio
+from typing import List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
+from typing_extensions import Annotated
 
-
-class PageInfoModel(BaseModel):
-    has_next_page: bool
-    has_previous_page: bool
-    start_cursor: Optional[str] = None
-    end_cursor: Optional[str] = None
+from .database import database
 
 
-class UserModel(BaseModel):
-    id: int
-    first_name: str
-    last_name: str
-    friends: List[int]
+async def validate_id(id: str) -> str:
+    tablename = id.split(":")[0]
+    table = database.get_table_by_name(tablename)
+    query = table.select(1).where(table.c.id == id)
+    result = await database.database.execute(query=query)
+    if not result.scalar():
+        raise ValueError(f"ID not in database: {id}")
+    return id
 
 
-class NodeModel(BaseModel):
-    # Cannot use strawberry.ID here.
-    id: str
+def validate_id_sync(id: str) -> str:
+    """
+    https://gist.github.com/phizaz/20c36c6734878c6ec053245a477572ec
+    """
+    return asyncio.get_event_loop().run_until_complete(validate_id(id))
 
 
-class ParentModel(NodeModel):
+class ChildModel(BaseModel):
     name: str
-    children: "ChildConnectionModel"
 
 
-class ChildConnectionModel(BaseModel):
-    edges: List["ChildEdgeModel"]
-    page_info: Optional[PageInfoModel]
+class ParentModel(BaseModel):
+    """
+    Would be nice to attach validators to the model functionally, but it's not possible.
+    See https://github.com/samuelcolvin/pydantic/issues/2076
 
+    Instead we just use the resuse validators to verify IDs
+    https://pydantic-docs.helpmanual.io/usage/validators/#reuse-validators
 
-class ChildEdgeModel(BaseModel):
-    node: "ChildModel"
-    cursor: Optional[str]
+    May be worth implementing as a root validator checking all `_id/_ids` fields.
+    """
 
-
-class ChildModel(NodeModel):
     name: str
+    child_ids: Annotated[List[str], Field(min_items=1)]
+
+    # Validators
+    _validate_child_ids = validator("child_ids", allow_reuse=True, each_item=True)(
+        validate_id_sync
+    )
+
+
+MODELS = {"children": ChildModel, "parents": ParentModel}

@@ -3,20 +3,20 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from strawberry.asgi import GraphQL
 
-from .database import database, metadata
-from .schema import schema
+from .database import database
+from .schema.schema import schema
 from .settings import DATABASE_URL, DEBUG, GRAPHQL_ROUTE
 
 
-async def on_startup():
+async def on_startup() -> None:
     # TODO: should use alembic or something
     engine = sqlalchemy.create_engine(str(DATABASE_URL), echo=True)
-    metadata.create_all(engine)
-    await database.connect()
+    database.metadata.create_all(engine)
+    await database.database.connect()
 
 
-async def on_shutdown():
-    await database.disconnect()
+async def on_shutdown() -> None:
+    await database.database.disconnect()
 
 
 app = Starlette(debug=DEBUG, on_startup=[on_startup], on_shutdown=[on_shutdown])
