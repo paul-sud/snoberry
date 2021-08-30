@@ -14,6 +14,56 @@ from .input_types import ChildInput, ParentInput
 _INPUT_NODES = {ParentInput, ChildInput}
 
 
+async def validate_id(id: str, field_name: str) -> str:
+    tablename, item_id = id.split(":")
+    type_from_id = get_type_from_id_field_name(field_name)
+    if tablename != type_from_id:
+        raise ValueError(
+            "ID type {type_from_id} does not match expected type {tablename}"
+        )
+    table = database.get_table_by_name(tablename)
+    query = table.select().where(table.c.id == item_id)
+    result = await database.database.fetch_one(query=query)
+    if result is None:
+        raise ValueError(f"ID not in database: {id}")
+
+
+def get_type_from_id_field_name(id_field_name: str) -> str:
+    """
+    Given a field name like "child_ids" or "parent_id" return the plural form of the
+    first part, i.e. "children" or "parents" for these examples.
+    """
+    no_suffix = id_field_name.removesuffix("_ids").removesuffix("_id")
+    if no_suffix == "child":
+        return "children"
+    return f"{no_suffix}s"
+
+
+async def validate_id_fields(item: BaseModel):
+    """
+    Validate that any linked IDs on the object are in the database. This is based on the
+    field name. `typex_id` fields will be checked as a valid link to a `typex`.
+    `typex_ids` fields, which are lists of links, will be checked one by one.
+
+    Because the code that interacts with the DB is async, it cannot be used as a
+    Pydantic validator. Some would argue that it's better to avoid involving Pydantic
+    in such concerns anyway.
+    https://github.com/samuelcolvin/pydantic/issues/857
+
+    It's possible to wrap an async function synchronously using
+    `asyncio.run_coroutine_threadsafe` or with libraries like `aio-libs` `janus`, but
+    these require creating an event loop in a separate thread or thread pool, which
+    seems like overkill just to do this validation.
+    https://www.reddit.com/r/Python/comments/6m826s/calling_async_functions_from_synchronous_functions/
+    """
+    for field_name, value in item:
+        if field_name.endswith("_id"):
+            await validate_id(value, field_name)
+        elif field_name.endswith("_ids"):
+            for each_value in value:
+                await validate_id(each_value, field_name)
+
+
 @strawberry.type
 class Mutation:
     @strawberry.mutation
@@ -41,9 +91,9 @@ class Mutation:
         https://www.encode.io/databases/connections_and_transactions/
         async with database.transaction():
         """
-        # result = input.to_pydantic()  # Doesn't work since need to make child_id list
         # Makes sense since a parent must have children
         # However need to be smarter if it's optional, to generalize
+        # You can't have unions in input types in GraphQL yet unfortunately
         if input.children is None and input.child_ids is None:
             raise ValueError("must specify either or both of child_ids and children")
         nodes, node_ids_to_children = depth_first_search(input)
@@ -58,8 +108,8 @@ class Mutation:
                 )
                 if getattr(node, id_field_name, None) is not None:
                     extras[id_field_name].extend(getattr(node, id_field_name))
-            # validated = node.to_pydantic()  # Doesn't always work since need ids
             validated = to_pydantic(node, extras)
+            await validate_id_fields(validated)
             table = database.get_table_by_name(database_table_name)
             query = table.insert()  # .returning(table.c.id)
             # In this case of sqlalchemy `result` is the lastrowid which is the same as
@@ -71,9 +121,9 @@ class Mutation:
             guid = f"{database_table_name}:{result}"
             node_ids_to_guids[id(node)] = guid
         query = table.select().where(table.c.id == result)
-        row = await database.database.execute(query=query)
+        row = await database.database.fetch_one(query=query)
         parent = ParentModel.construct(**row.data)
-        return Parent.from_pydantic(parent, extra={"id": row.id})
+        return Parent(id=row.id, **parent.dict())
 
 
 def to_pydantic(

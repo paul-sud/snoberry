@@ -70,7 +70,7 @@ async def test_deep_mutation_with_existing_nested_type(in_memory_db, schema, chi
             createParent(
                 input: {
                     name: "Mary"
-                    childIds: ["children:2"]
+                    childIds: ["children:CHILD"]
                 }
             ) {
                 id
@@ -85,7 +85,9 @@ async def test_deep_mutation_with_existing_nested_type(in_memory_db, schema, chi
                 }
             }
         }
-    """
+    """.replace(
+        "CHILD", child
+    )
     result = await schema.execute(query)
     assert not result.errors
 
