@@ -7,7 +7,7 @@ from snoberry.app import on_shutdown, on_startup
 
 
 @pytest.fixture(scope="session")
-def in_memory_db_setting(tmp_path_factory):
+def db_file(tmp_path_factory):
     """
     Using in memory sqlite ":memory:" causes issues:
     https://stackoverflow.com/questions/21766960/operationalerror-no-such-table-in-flask-with-sqlalchemy
@@ -21,7 +21,7 @@ def in_memory_db_setting(tmp_path_factory):
 
 
 @pytest.fixture(scope="session", autouse=True)
-async def in_memory_db(in_memory_db_setting):
+async def in_memory_db(db_file):
     await on_startup()
     yield
     # Will be executed after the last test

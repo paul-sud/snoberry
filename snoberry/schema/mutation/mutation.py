@@ -14,7 +14,7 @@ from .input_types import ChildInput, ParentInput
 _INPUT_NODES = {ParentInput, ChildInput}
 
 
-async def validate_id(id: str, field_name: str) -> str:
+async def validate_id(id: str, field_name: str) -> None:
     tablename, item_id = id.split(":")
     type_from_id = get_type_from_id_field_name(field_name)
     if tablename != type_from_id:
@@ -39,7 +39,7 @@ def get_type_from_id_field_name(id_field_name: str) -> str:
     return f"{no_suffix}s"
 
 
-async def validate_id_fields(item: BaseModel):
+async def validate_id_fields(item: BaseModel) -> None:
     """
     Validate that any linked IDs on the object are in the database. This is based on the
     field name. `typex_id` fields will be checked as a valid link to a `typex`.
@@ -76,7 +76,7 @@ class Mutation:
         query = table.select().where(table.c.id == result)
         row = await database.database.fetch_one(query=query)
         child_model = ChildModel.construct(**row.data)
-        return Child.from_pydantic(child_model, extra={"id": row.id})
+        return Child(id=row.id, **child_model.dict())
 
     @strawberry.mutation
     async def create_parent(self, input: ParentInput) -> Parent:

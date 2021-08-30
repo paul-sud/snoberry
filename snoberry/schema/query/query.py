@@ -40,7 +40,7 @@ class ChildEdge:
         row = await database.database.fetch_one(query=query)
         # No need for pydantic validation, data in DB is well-formed
         child = ChildModel.construct(**row.data)
-        return Child.from_pydantic(child, extra={"id": row.id})
+        return Child(id=row.id, **child.dict())
 
 
 @strawberry.type
@@ -108,9 +108,7 @@ class Query:
         row = await database.database.fetch_one(query=query)
         model = cast(BaseModel, MODELS[typename])
         modeled = model.construct(**row.data)
-        return _NODES[typename].from_pydantic(  # type: ignore
-            modeled, extra={"id": row.id}
-        )
+        return _NODES[typename](id=row.id, **modeled.dict())
 
     @strawberry.field
     async def get_parent(self, id: str) -> Parent:
@@ -120,4 +118,4 @@ class Query:
         row = await database.database.fetch_one(query=query)
         # No need for pydantic validation, data in DB is well-formed
         parent = ParentModel.construct(**row.data)
-        return Parent.from_pydantic(parent, extra={"id": row.id})
+        return Parent(id=row.id, **parent.dict())
