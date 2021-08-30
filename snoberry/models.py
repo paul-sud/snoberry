@@ -8,17 +8,18 @@ from .database import database
 
 
 async def validate_id(id: str) -> str:
-    tablename = id.split(":")[0]
+    tablename, item_id = id.split(":")
     table = database.get_table_by_name(tablename)
-    query = table.select(1).where(table.c.id == id)
-    result = await database.database.execute(query=query)
-    if not result.scalar():
+    query = table.select(1).where(table.c.id == item_id)
+    result = await database.database.fetch_one(query=query)
+    if result is None:
         raise ValueError(f"ID not in database: {id}")
     return id
 
 
 def validate_id_sync(id: str) -> str:
     """
+    This does not work if there is an event loop already running.
     https://gist.github.com/phizaz/20c36c6734878c6ec053245a477572ec
     """
     return asyncio.get_event_loop().run_until_complete(validate_id(id))
@@ -40,6 +41,7 @@ class ParentModel(BaseModel):
     """
 
     name: str
+    # conlist also works but errors in mypy
     child_ids: Annotated[List[str], Field(min_items=1)]
 
     # Validators
@@ -49,3 +51,4 @@ class ParentModel(BaseModel):
 
 
 MODELS = {"children": ChildModel, "parents": ParentModel}
+database.populate_tables(MODELS)

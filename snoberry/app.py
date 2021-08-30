@@ -4,6 +4,7 @@ from starlette.middleware.cors import CORSMiddleware
 from strawberry.asgi import GraphQL
 
 from .database import database
+from .models import MODELS
 from .schema.schema import schema
 from .settings import DATABASE_URL, DEBUG, GRAPHQL_ROUTE
 
@@ -11,6 +12,7 @@ from .settings import DATABASE_URL, DEBUG, GRAPHQL_ROUTE
 async def on_startup() -> None:
     # TODO: should use alembic or something
     engine = sqlalchemy.create_engine(str(DATABASE_URL), echo=True)
+    database.populate_tables(MODELS)
     database.metadata.create_all(engine)
     await database.database.connect()
 

@@ -23,8 +23,8 @@ class Mutation:
         result = await database.database.execute(
             query=table.insert(), values={"data": validated.dict()}
         )
-        query = table.select().where(table.c.id == result.id)
-        row = await database.database.execute(query=query)
+        query = table.select().where(table.c.id == result)
+        row = await database.database.fetch_one(query=query)
         child_model = ChildModel.construct(**row.data)
         return Child.from_pydantic(child_model, extra={"id": row.id})
 
@@ -61,14 +61,16 @@ class Mutation:
             # validated = node.to_pydantic()  # Doesn't always work since need ids
             validated = to_pydantic(node, extras)
             table = database.get_table_by_name(database_table_name)
-            query = table.insert()
+            query = table.insert()  # .returning(table.c.id)
+            # In this case of sqlalchemy `result` is the lastrowid which is the same as
+            # the autoincrementing primary key. I don't think it's the same for other
+            # dialects. Could probably update the query above
             result = await database.database.execute(
-                query=query, values=validated.dict()
+                query=query, values={"data": validated.dict()}
             )
-            guid = f"{database_table_name}:{result.id}"
-            print(f"Created {guid}")
+            guid = f"{database_table_name}:{result}"
             node_ids_to_guids[id(node)] = guid
-        query = table.select().where(table.c.id == result.id)
+        query = table.select().where(table.c.id == result)
         row = await database.database.execute(query=query)
         parent = ParentModel.construct(**row.data)
         return Parent.from_pydantic(parent, extra={"id": row.id})

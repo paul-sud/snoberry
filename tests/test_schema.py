@@ -1,10 +1,18 @@
 import pytest
+import strawberry
 
-from snoberry.schema import schema
+from snoberry.schema.mutation.mutation import Mutation
+from snoberry.schema.query.query import Query
 
 
-@pytest.fixture(scope="module")
-def child():
+@pytest.fixture
+def schema():
+    schema = strawberry.Schema(query=Query, mutation=Mutation)
+    return schema
+
+
+@pytest.fixture
+async def child(in_memory_db, schema):
     query = """
         mutation {
             createChild(
@@ -17,10 +25,13 @@ def child():
             }
         }
     """
-    schema.execute_sync(query)
+    result = await schema.execute(query)
+    assert not result.errors
+    return result.data["createChild"]["id"]
 
 
-def test_deep_mutation():
+@pytest.mark.asyncio
+async def test_deep_mutation(in_memory_db, schema):
     """
     This mutation should first create a child, then create a parent linked to the child
     by the child's generated ID. Children should be stored in the DB as an array of IDs,
@@ -48,11 +59,12 @@ def test_deep_mutation():
             }
         }
     """
-    result = schema.execute_sync(query)
+    result = await schema.execute(query)
     assert not result.errors
 
 
-def test_deep_mutation_with_existing_nested_type(child):
+@pytest.mark.asyncio
+async def test_deep_mutation_with_existing_nested_type(in_memory_db, schema, child):
     query = """
         mutation {
             createParent(
@@ -74,18 +86,18 @@ def test_deep_mutation_with_existing_nested_type(child):
             }
         }
     """
-    result = schema.execute_sync(query)
-    print(result.data)
+    result = await schema.execute(query)
     assert not result.errors
 
 
-def test_deep_mutation_nested_ids_and_types(child):
+@pytest.mark.asyncio
+async def test_deep_mutation_nested_ids_and_types(in_memory_db, schema, child):
     query = """
         mutation {
             createParent(
                 input: {
                     name: "Bootsy"
-                    childIds: ["children:2"],
+                    childIds: ["children:CHILD"],
                     children: [
                         {
                             name: "Kline"
@@ -110,6 +122,8 @@ def test_deep_mutation_nested_ids_and_types(child):
                 }
             }
         }
-    """
-    result = schema.execute_sync(query)
+    """.replace(
+        "CHILD", child
+    )
+    result = await schema.execute(query)
     assert not result.errors
