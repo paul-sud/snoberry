@@ -17,7 +17,7 @@ cp dev.env .env
 
 ## Usage
 
-To start the server with hot reloading run `uvicorn berry.app:app --reload`.
+To start the server with hot reloading run `uvicorn snoberry.app:app --reload`.
 
 You can go to the GraphiQL interface at http://127.0.0.1:8000/graphql
 

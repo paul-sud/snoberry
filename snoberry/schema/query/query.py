@@ -73,6 +73,10 @@ class Parent(Node):
     def children(
         self, first: Optional[int] = None, after: Optional[str] = None
     ) -> ChildConnection:
+        """
+        page_info not resolved on ChildConnection because we need access to first and
+        after. They could be stored
+        """
         start_cursor, end_cursor = get_start_and_end_cursor(
             len(self.child_ids), first=first, after=after
         )

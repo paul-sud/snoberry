@@ -129,3 +129,4 @@ async def test_deep_mutation_nested_ids_and_types(in_memory_db, schema, child):
     )
     result = await schema.execute(query)
     assert not result.errors
+    assert len(result.data["createParent"]["children"]["edges"]) == 2

@@ -4,7 +4,6 @@ from starlette.middleware.cors import CORSMiddleware
 from strawberry.asgi import GraphQL
 
 from .database import database
-from .models import MODELS
 from .schema.schema import schema
 from .settings import DATABASE_URL, DEBUG, GRAPHQL_ROUTE
 
