@@ -75,7 +75,7 @@ def make_edge_resolver(edge_type: Type, ids_field: str) -> Callable:
 #         )
 
 
-def make_edge_class(class_name: str, node_type: Node, id_field_name: str) -> Type:
+def make_edge_class(class_name: str, node_type: Type[Node], id_field_name: str) -> Type:
     klass = type(
         class_name,
         (),
@@ -114,19 +114,19 @@ def make_connection_class(
 
 
 def make_edge_strawberry_type(
-    type_name: str, node_type: Node, id_field_name: str
+    type_name: str, node_type: Type[Node], id_field_name: str
 ) -> Type:
     EdgeClass = make_edge_class(
-        class_name=f"{type_name}Class", node_type=node_type, id_field_name=id_field_name
+        class_name=type_name, node_type=node_type, id_field_name=id_field_name
     )
     return strawberry.type(EdgeClass)
 
 
 def make_connection_strawberry_type(
-    type_name: str, edge_type: Type, ids_field_name: str
+    type_name: str, edge_type: Type[Node], ids_field_name: str
 ) -> Type:
     ConnectionClass = make_connection_class(
-        class_name=f"{type_name}Class",
+        class_name=type_name,
         edge_type=edge_type,
         ids_field_name=ids_field_name,
     )
@@ -149,23 +149,25 @@ def singular(noun: str) -> str:
     return noun.removesuffix("s")
 
 
-for model_name, model in MODELS.items():
-    edge_fields = []
-    connection_fields = []
-    for field_name, field in vars(model).items():
-        if field_name.endswith("_ids"):
-            target_type = field_name.removesuffix("_ids")
-            # first generate edge class, since it is required by the connection
-            EdgeType = make_edge_strawberry_type(
-                type_name=f"{target_type.title()}Edge",
-                node_type=_NODES[get_type_from_id_field_name(field_name)],
-                id_field_name=singular(field_name),
-            )
-            add_to_globals(EdgeType)
-            # then generate the connection class using the new edge class
-            ConnectionType = make_connection_strawberry_type(
-                type_name=f"{target_type.title()}Connection",
-                edge_type=EdgeType,
-                ids_field_name=field_name,
-            )
-            add_to_globals(ConnectionType)
+def generate_types() -> None:
+    for model in MODELS.values():
+        for field_name in model.__fields__:
+            if field_name.endswith("_ids"):
+                target_type = field_name.removesuffix("_ids")
+                # first generate edge class, since it is required by the connection
+                EdgeType = make_edge_strawberry_type(
+                    type_name=f"{target_type.title()}Edge",
+                    node_type=_NODES[get_type_from_id_field_name(field_name)],
+                    id_field_name=singular(field_name),
+                )
+                add_to_globals(EdgeType)
+                # then generate the connection class using the new edge class
+                ConnectionType = make_connection_strawberry_type(
+                    type_name=f"{target_type.title()}Connection",
+                    edge_type=EdgeType,
+                    ids_field_name=field_name,
+                )
+                add_to_globals(ConnectionType)
+
+
+generate_types()
