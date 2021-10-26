@@ -14,10 +14,6 @@ from ...relay.utils import (
     has_previous_page,
 )
 
-# How to pass validation rules to server?
-#     validation_rules = default_validation_rules + [depth_limit_validator(10)]
-#     result = schema.execute_sync(query, validation_rules=validation_rules)
-
 
 @strawberry.experimental.pydantic.type(model=ChildModel, fields=["name"])
 class Child(Node):
@@ -34,10 +30,7 @@ class ChildEdge:
         """
         Identical code to other resolvers
         """
-        type_id = self.child_id.split(":")[1]
-        table = database.get_table_by_name("children")
-        query = table.select().where(table.c.id == type_id)
-        row = await database.database.fetch_one(query=query)
+        row = await database.get_by_guid(self.child_id)
         # No need for pydantic validation, data in DB is well-formed
         child = ChildModel.construct(**row.data)
         return Child(id=row.id, **child.dict())
@@ -98,6 +91,7 @@ _NODES = {"parents": Parent, "children": Child}
 
 @strawberry.type
 class Query:
+    @strawberry.field
     async def node(self, id: str) -> Node:
         """
         `node` root field required for Relay (refetching etc)
@@ -105,21 +99,9 @@ class Query:
         Using `construct` skips validation and should be much faster. It's ok because
         we trust that the data in the database was validated at creation/update
         """
-        typename, type_id = id.split(":")
-        table = database.get_table_by_name(typename)
-        # No need for pydantic validation, data in DB is well-formed
-        query = table.select().where(table.c.id == type_id)
-        row = await database.database.fetch_one(query=query)
+        typename, _ = id.split(":")
+        row = await database.get_by_guid(id)
         model = cast(BaseModel, MODELS[typename])
         modeled = model.construct(**row.data)
+        # p: this returns the numerical ID in the table, not the global ID
         return _NODES[typename](id=row.id, **modeled.dict())
-
-    @strawberry.field
-    async def get_parent(self, id: str) -> Parent:
-        typename, type_id = id.split(":")
-        table = database.get_table_by_name(typename)
-        query = table.select().where(table.c.id == type_id)
-        row = await database.database.fetch_one(query=query)
-        # No need for pydantic validation, data in DB is well-formed
-        parent = ParentModel.construct(**row.data)
-        return Parent(id=row.id, **parent.dict())

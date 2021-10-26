@@ -1,6 +1,8 @@
 from base64 import b64decode, b64encode
 from typing import Any, List, Optional, Tuple
 
+# TODO replace with graphql-relay-py https://github.com/graphql-python/graphql-relay-py
+
 
 def get_cursor_from_offset(offset: int) -> str:
     """

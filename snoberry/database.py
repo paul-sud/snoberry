@@ -32,5 +32,14 @@ class Database:
     def get_table_by_name(self, name: str) -> sqlalchemy.Table:
         return self._tables[name]
 
+    async def get_by_guid(self, guid: str) -> sqlalchemy.engine.row.Row:
+        type_name, type_id = guid.split(":")
+        table = database.get_table_by_name(type_name)
+        query = table.select().where(table.c.id == type_id)
+        result = await database.database.fetch_one(query=query)
+        if result is None:
+            raise ValueError(f"id {guid} not in database")
+        return result
+
 
 database = Database()

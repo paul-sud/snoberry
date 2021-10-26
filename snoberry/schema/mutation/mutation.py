@@ -158,8 +158,8 @@ def depth_first_search(
     stack = []
     explored = {}
     node_ids_to_children = {}
-    # Maybe should use weakrefs here so storing pointers to nodes doesn't prevent them
-    # from being garbage collected?
+    # TODO: Maybe should use weakrefs here so storing pointers to nodes doesn't prevent
+    # garbage collection?
     explored[id(node)] = node
     stack.append(node)
     while stack:
@@ -182,8 +182,6 @@ def get_child_nodes(node: Any) -> Iterator[Tuple[str, Any]]:
     Must recurse through lists, which per GraphQL spec can be arbitrarily nested.
     """
     for field_name, field in vars(node).items():
-        # # If traversing the pydantic graph
-        # if isinstance(field, BaseModel):
         if type(field) in _INPUT_NODES:
             yield field_name, field
         if isinstance(field, list):

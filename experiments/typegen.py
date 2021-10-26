@@ -3,9 +3,19 @@
 So we first dynamically create the class with `type`, making sure to populate
 `__annotations__`, then wrap the class in `strawberry.type`, and finally expose the
 generated types in this module by patching `globals()`
+
+While an interesting use of Python's dynamic capabilities, it doesn't work well with
+static type checkers. For instance, `mypy`, in the words of Guido van Rossum,
+"doesn't run your code, it only reads it, and it only looks at the types of attributes,
+not at actions like setattr()."
+- https://github.com/python/mypy/issues/5719#issuecomment-426427083
+
+Given this, code generation is probably preferable.
+
+Outputs should be the same as ChildConnection and ChildEdge classes defined in query.
 """
 
-from typing import Callable, List, Type
+from typing import Any, Callable, List, Type
 
 import strawberry
 
@@ -16,7 +26,7 @@ from snoberry.schema.mutation.mutation import get_type_from_id_field_name
 from snoberry.schema.query.query import _NODES
 
 
-def make_node_resolver(node_type: Type, id_field: str) -> Callable:
+def make_node_resolver(node_type: Type[Any], id_field: str) -> Callable[[Node], Node]:
     """
     Higher order function to create a resolver resolving to a specific node, to be used
     as resolver to `X` in `XEdge` types.
@@ -31,12 +41,14 @@ def make_node_resolver(node_type: Type, id_field: str) -> Callable:
     return resolve_node
 
 
-def make_edge_resolver(edge_type: Type, ids_field: str) -> Callable:
+def make_edge_resolver(
+    edge_type: Type[Any], ids_field: str
+) -> Callable[[Node], List[Node]]:
     """
     Returns a resolver for resolving `edges` in `XConnection` types
     """
 
-    def resolve_edge(root: Node) -> Node:
+    def resolve_edge(root: Node) -> List[Node]:
         return get_edges_to_return(
             [
                 edge_type(
@@ -50,29 +62,6 @@ def make_edge_resolver(edge_type: Type, ids_field: str) -> Callable:
         )
 
     return resolve_edge
-
-
-# # These should be the outputs of the generation step
-# @strawberry.type
-# class ChildEdge:
-#     cursor: str
-#     child_id: strawberry.Private[str]
-#     node: Child = strawberry.field(resolver=get_node)
-
-
-# @strawberry.type
-# class ChildConnection:
-#     page_info: PageInfo
-#     child_ids: strawberry.Private[List[str]]
-
-#     @strawberry.field
-#     def edges(self) -> List[ChildEdge]:
-#         return get_edges_to_return(
-#             [
-#                 ChildEdge(child_id=child_id, cursor=get_cursor_from_offset(i))
-#                 for i, child_id in enumerate(self.child_ids)
-#             ]
-#         )
 
 
 def make_edge_class(class_name: str, node_type: Type[Node], id_field_name: str) -> Type:

@@ -1,5 +1,5 @@
-strawberry-graphql[opentelemetry,pydantic]==0.73.9
-databases[sqlite]==0.4.3
+strawberry-graphql[opentelemetry,pydantic]==0.80.2
+databases[sqlite]==0.5.0
 # sqlalchemy version set by databases
 sqlalchemy
 starlette==0.16.0
