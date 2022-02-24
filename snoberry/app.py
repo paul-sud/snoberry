@@ -12,6 +12,8 @@ async def on_startup() -> None:
     engine = sqlalchemy.create_engine(str(DATABASE_URL), echo=True)
     database.metadata.create_all(engine)
     await database.database.connect()
+    # TODO: create these table names dynamically
+    database.populate_tables(("children", "parents"))
 
 
 async def on_shutdown() -> None:

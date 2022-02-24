@@ -1,23 +1,34 @@
-import dataclasses
 from collections import defaultdict
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, TYPE_CHECKING
 
 import strawberry
-from pydantic import BaseModel
-from strawberry.type import StrawberryType
+from apischema import serialize, deserialize
 
 from ...database import database
-from ...models import ChildModel, ParentModel
-from ...schema.query.query import Child, Parent
-from .input_types import ChildInput, ParentInput
+from ...schema.query.query import Child, HasTableName, Parent
+
+
+if TYPE_CHECKING:
+    from strawberry.type import StrawberryType
+
+
+@strawberry.input
+class ChildInput:
+    name: str
+
+
+@strawberry.input
+class ParentInput:
+    name: str
+    children: Optional[List[ChildInput]] = None
+
 
 _INPUT_NODES = {ParentInput, ChildInput}
 
 
-async def validate_id(id: str, field_name: str) -> None:
+async def validate_id(id: str, field_name: str, expected_link_to_type: HasTableName) -> None:
     tablename, item_id = id.split(":")
-    type_from_id = get_type_from_id_field_name(field_name)
-    if tablename != type_from_id:
+    if tablename != expected_link_to_type.table_name:
         raise ValueError(
             "ID type {type_from_id} does not match expected type {tablename}"
         )
@@ -28,27 +39,12 @@ async def validate_id(id: str, field_name: str) -> None:
         raise ValueError(f"ID not in database: {id}")
 
 
-def get_type_from_id_field_name(id_field_name: str) -> str:
-    """
-    Given a field name like "child_ids" or "parent_id" return the plural form of the
-    first part, i.e. "children" or "parents" for these examples.
-    """
-    no_suffix = id_field_name.removesuffix("_ids").removesuffix("_id")
-    if no_suffix == "child":
-        return "children"
-    return f"{no_suffix}s"
-
-
-async def validate_id_fields(item: BaseModel) -> None:
+async def validate_id_fields(item: "StrawberryType") -> None:
     """
     Validate that any linked IDs on the object are in the database. This is based on the
     field name. `typex_id` fields will be checked as a valid link to a `typex`.
-    `typex_ids` fields, which are lists of links, will be checked one by one.
-
-    Because the code that interacts with the DB is async, it cannot be used as a
-    Pydantic validator. Some would argue that it's better to avoid involving Pydantic
-    in such concerns anyway.
-    https://github.com/samuelcolvin/pydantic/issues/857
+    `typex_ids` fields, which are lists of links, will be checked one by one. Async
+    validators are not possible in apischema, can't use the usual @validator decorator.
 
     It's possible to wrap an async function synchronously using
     `asyncio.run_coroutine_threadsafe` or with libraries like `aio-libs` `janus`, but
@@ -56,27 +52,28 @@ async def validate_id_fields(item: BaseModel) -> None:
     seems like overkill just to do this validation.
     https://www.reddit.com/r/Python/comments/6m826s/calling_async_functions_from_synchronous_functions/
     """
-    for field_name, value in item:
+    for field_name, value in vars(item).items():
         if field_name.endswith("_id"):
-            await validate_id(value, field_name)
+            await validate_id(value, field_name, expected_link_to_type)
         elif field_name.endswith("_ids"):
             for each_value in value:
-                await validate_id(each_value, field_name)
+                await validate_id(each_value, field_name, expected_link_to_type)
 
 
 @strawberry.type
 class Mutation:
     @strawberry.mutation
     async def create_child(self, input: ChildInput) -> Child:
-        validated = to_pydantic(input)
+        serialized = serialize(input)
+        # Runs apischema validation
+        deserialize(Child, serialized)
         table = database.get_table_by_name("children")
         result = await database.database.execute(
-            query=table.insert(), values={"data": validated.dict()}
+            query=table.insert(), values={"data": serialized}
         )
         query = table.select().where(table.c.id == result)
         row = await database.database.fetch_one(query=query)
-        child_model = ChildModel.construct(**row.data)
-        return Child(id=row.id, **child_model.dict())
+        return Child(id=row.id, **row.data)
 
     @strawberry.mutation
     async def create_parent(self, input: ParentInput) -> Parent:
@@ -122,28 +119,7 @@ class Mutation:
             node_ids_to_guids[id(node)] = guid
         query = table.select().where(table.c.id == result)
         row = await database.database.fetch_one(query=query)
-        parent = ParentModel.construct(**row.data)
-        return Parent(id=row.id, **parent.dict())
-
-
-def to_pydantic(
-    strawberry_model: StrawberryType, extras: Optional[Dict[str, Any]] = None
-) -> BaseModel:
-    """
-    Adapted from strawberry.experimental.pydantic.object_type.py. Want to pass extras
-    not in the input model to the Pydantic model. You can set attributes on the
-    strawberry types, however when `dataclass.asdict` the extra properties are not
-    returned and not passed to the Pydantic model constructor.
-
-    TODO: Strawberry PR to add inbuilt support for passing extras to Pydantic
-    """
-    pydantic_model = globals()[
-        type(strawberry_model).__name__.removesuffix("Input") + "Model"
-    ]
-    instance_kwargs = dataclasses.asdict(strawberry_model)
-    if extras is not None:
-        instance_kwargs.update(extras)
-    return pydantic_model(**instance_kwargs)
+        return Parent(id=row.id, **row.data)
 
 
 def depth_first_search(
@@ -207,7 +183,7 @@ def _get_id_field_from_input_field_name(input_field_name: str) -> str:
     return input_field_name.rstrip("s") + "_ids"
 
 
-def _get_database_table_from_input_node(node: StrawberryType) -> str:
+def _get_database_table_from_input_node(node: "StrawberryType") -> str:
     singular_name = type(node).__name__.removesuffix("Input").lower()
     if singular_name == "child":
         return "children"

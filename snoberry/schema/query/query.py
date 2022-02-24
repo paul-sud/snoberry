@@ -1,10 +1,11 @@
-from typing import List, Optional, cast
+from dataclasses import field
+from typing import List, Optional
+from typing_extensions import Protocol
 
 import strawberry
-from pydantic import BaseModel
+from apischema import schema
 
 from ...database import database
-from ...models import MODELS, ChildModel, ParentModel
 from ...relay.schema import Node, PageInfo
 from ...relay.utils import (
     get_cursor_from_offset,
@@ -15,9 +16,18 @@ from ...relay.utils import (
 )
 
 
-@strawberry.experimental.pydantic.type(model=ChildModel, fields=["name"])
+class HasTableName(Protocol):
+    def table_name(self) -> None:
+        ...
+
+
+@strawberry.type
 class Child(Node):
-    pass
+    name: str
+
+    @property
+    def table_name(self) -> str:
+        return "children"
 
 
 @strawberry.type
@@ -31,9 +41,7 @@ class ChildEdge:
         Identical code to other resolvers
         """
         row = await database.get_by_guid(self.child_id)
-        # No need for pydantic validation, data in DB is well-formed
-        child = ChildModel.construct(**row.data)
-        return Child(id=row.id, **child.dict())
+        return Child(id=row.id, **row.data)
 
 
 @strawberry.type
@@ -54,13 +62,16 @@ class ChildConnection:
         )
 
 
-@strawberry.experimental.pydantic.type(model=ParentModel, fields=["name"])
+@strawberry.type
 class Parent(Node):
     """
     Need to specify children here since resolver must take arguments per Relay spec.
     """
-
-    child_ids: strawberry.Private[List[str]]
+    name: str
+    child_ids: strawberry.Private[List[str]] = field(
+        default_factory=list,
+        metadata=schema(max_items=1, unique=True),
+    )
 
     @strawberry.field
     def children(
@@ -101,7 +112,4 @@ class Query:
         """
         typename, _ = id.split(":")
         row = await database.get_by_guid(id)
-        model = cast(BaseModel, MODELS[typename])
-        modeled = model.construct(**row.data)
-        # p: this returns the numerical ID in the table, not the global ID
-        return _NODES[typename](id=row.id, **modeled.dict())
+        return _NODES[typename](id=row.id, **row.data)
